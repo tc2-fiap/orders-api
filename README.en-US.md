@@ -34,4 +34,4 @@ cd tests/FiapGames.Orders.Tests && dotnet test
 
 ## Documentation
 
-Full architecture, event contracts, and the project-wide decision record live in [`../documentation/`](../documentation/) — see [`DOCUMENTATION.en-US.md`](../documentation/narrative/DOCUMENTATION.en-US.md) and [`instructions.md`](../documentation/spec/instructions.md) §4.3.
+Full architecture, event contracts, and the project-wide decision record live in [`../documentation/`](../documentation/) (also published at [github.com/tc2-fiap/documentation](https://github.com/tc2-fiap/documentation)) — see [`DOCUMENTATION.en-US.md`](../documentation/narrative/DOCUMENTATION.en-US.md) and [`instructions.md`](../documentation/spec/instructions.md) §4.3.

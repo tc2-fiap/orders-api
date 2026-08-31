@@ -34,4 +34,4 @@ cd tests/FiapGames.Orders.Tests && dotnet test
 
 ## Documentação
 
-A arquitetura completa, os contratos de eventos e o registro de decisões do projeto vivem em [`../documentation/`](../documentation/) — ver [`DOCUMENTATION.pt-BR.md`](../documentation/narrative/DOCUMENTATION.pt-BR.md) e [`instructions.md`](../documentation/spec/instructions.md) §4.3 (em inglês).
+A arquitetura completa, os contratos de eventos e o registro de decisões do projeto vivem em [`../documentation/`](../documentation/) (também publicado em [github.com/tc2-fiap/documentation](https://github.com/tc2-fiap/documentation)) — ver [`DOCUMENTATION.pt-BR.md`](../documentation/narrative/DOCUMENTATION.pt-BR.md) e [`instructions.md`](../documentation/spec/instructions.md) §4.3 (em inglês).
