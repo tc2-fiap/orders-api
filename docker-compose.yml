@@ -1,0 +1,70 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: fiap_games
+      ORDERS_DB_PASSWORD: ${ORDERS_DB_PASSWORD:?ORDERS_DB_PASSWORD must be set}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-fiap}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set}
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  orders-api:
+    build:
+      context: ./src/FiapGames.Orders.Api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8084:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Postgres__Host: postgres
+      Postgres__Port: "5432"
+      Postgres__Database: fiap_games
+      Postgres__Username: orders_role
+      Postgres__Password: ${ORDERS_DB_PASSWORD:?ORDERS_DB_PASSWORD must be set}
+      Postgres__SearchPath: orders
+      RabbitMq__Host: rabbitmq
+      RabbitMq__VirtualHost: "/"
+      RabbitMq__Username: ${RABBITMQ_USER:-fiap}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set}
+      Jwt__Secret: ${JWT_SECRET:?JWT_SECRET must be set}
+      Jwt__Issuer: FiapGames
+      Jwt__Audience: FiapGames.Client
+      Jwt__ExpiryMinutes: "60"
+      # No catalog-api in this standalone compose — order creation needs a
+      # real catalog-api reachable at this URL. Health/auth checks work
+      # without it; POST /api/orders won't until it's reachable.
+      Catalog__BaseUrl: ${CATALOG_BASE_URL:-http://localhost:8083}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+volumes:
+  postgres-data:

@@ -1,0 +1,133 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders-api
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: orders-api
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: orders-api
+  template:
+    metadata:
+      labels:
+        app: orders-api
+    spec:
+      initContainers:
+        # See users-api's deployment.yaml for why this guards against a
+        # transient crash on a genuinely cold cluster bring-up.
+        - name: wait-for-postgres
+          image: postgres:16-alpine
+          command:
+            - sh
+            - -c
+            - until pg_isready -h "$POSTGRES_HOST" -p "$POSTGRES_PORT"; do echo waiting for postgres; sleep 2; done
+          env:
+            - name: POSTGRES_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: orders-api-config
+                  key: POSTGRES_HOST
+            - name: POSTGRES_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: orders-api-config
+                  key: POSTGRES_PORT
+      containers:
+        - name: orders-api
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ASPNETCORE_ENVIRONMENT
+              value: "Production"
+            - name: Postgres__Host
+              valueFrom:
+                configMapKeyRef:
+                  name: orders-api-config
+                  key: POSTGRES_HOST
+            - name: Postgres__Port
+              valueFrom:
+                configMapKeyRef:
+                  name: orders-api-config
+                  key: POSTGRES_PORT
+            - name: Postgres__Database
+              valueFrom:
+                configMapKeyRef:
+                  name: orders-api-config
+                  key: POSTGRES_DATABASE
+            - name: Postgres__Username
+              valueFrom:
+                configMapKeyRef:
+                  name: orders-api-config
+                  key: POSTGRES_USERNAME
+            - name: Postgres__SearchPath
+              valueFrom:
+                configMapKeyRef:
+                  name: orders-api-config
+                  key: POSTGRES_SEARCHPATH
+            - name: Postgres__Password
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: ORDERS_DB_PASSWORD
+            - name: RabbitMq__Host
+              valueFrom:
+                configMapKeyRef:
+                  name: orders-api-config
+                  key: RABBITMQ_HOST
+            - name: RabbitMq__VirtualHost
+              valueFrom:
+                configMapKeyRef:
+                  name: orders-api-config
+                  key: RABBITMQ_VIRTUALHOST
+            - name: RabbitMq__Username
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-credentials
+                  key: RABBITMQ_DEFAULT_USER
+            - name: RabbitMq__Password
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-credentials
+                  key: RABBITMQ_DEFAULT_PASS
+            - name: Jwt__Secret
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-credentials
+                  key: JWT_SECRET
+            - name: Jwt__Issuer
+              valueFrom:
+                configMapKeyRef:
+                  name: jwt-config
+                  key: JWT_ISSUER
+            - name: Jwt__Audience
+              valueFrom:
+                configMapKeyRef:
+                  name: jwt-config
+                  key: JWT_AUDIENCE
+            - name: Jwt__ExpiryMinutes
+              valueFrom:
+                configMapKeyRef:
+                  name: jwt-config
+                  key: JWT_EXPIRY_MINUTES
+            - name: Catalog__BaseUrl
+              valueFrom:
+                configMapKeyRef:
+                  name: orders-api-config
+                  key: CATALOG_BASE_URL
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10

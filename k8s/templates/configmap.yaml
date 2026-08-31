@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: orders-api-config
+  namespace: {{ .Values.global.namespace }}
+data:
+  POSTGRES_HOST: {{ .Values.postgres.host | quote }}
+  POSTGRES_PORT: {{ .Values.postgres.port | quote }}
+  POSTGRES_DATABASE: {{ .Values.postgres.database | quote }}
+  POSTGRES_USERNAME: {{ .Values.postgres.username | quote }}
+  POSTGRES_SEARCHPATH: {{ .Values.postgres.searchPath | quote }}
+  RABBITMQ_HOST: "rabbitmq"
+  RABBITMQ_VIRTUALHOST: "/"
+  CATALOG_BASE_URL: {{ .Values.catalog.baseUrl | quote }}
