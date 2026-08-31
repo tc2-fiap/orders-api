@@ -15,11 +15,11 @@ Brings up this service plus its own Postgres and RabbitMQ. API on `localhost:808
 
 ## Run as part of the system
 
-Deployed by the `orchestration` Helm chart alongside the other four backend services and the frontend — see [`../orchestration/README.en-US.md`](../orchestration/README.en-US.md). Reached through the shared Ingress at `/api/orders/*` and `/api/library`.
+Deployed by the [`orchestration`](https://github.com/tc2-fiap/orchestration) Helm chart alongside the other four backend services and the frontend — see [`../orchestration/README.en-US.md`](../orchestration/README.en-US.md). Reached through the shared Ingress at `/api/orders/*` and `/api/library`.
 
 ## What's here
 
-- `Domain/Order.cs` — `Price` is a **snapshot**, read synchronously from `catalog-api` at creation time and never re-fetched; `Status` only ever moves forward.
+- `Domain/Order.cs` — `Price` is a **snapshot**, read synchronously from [`catalog-api`](https://github.com/tc2-fiap/catalog-api) at creation time and never re-fetched; `Status` only ever moves forward.
 - `Domain/OrderEvent.cs` — the per-order audit log (`OrderPlacedEvent`/`PaymentProcessedEvent` payloads, admin-only via `GET /api/orders/{id}/events`).
 - Publishes `OrderPlacedEvent` in the same transaction as the order write (EF Core outbox); consumes `PaymentProcessedEvent`, idempotent on `OrderId` — a late or duplicate delivery never reverses a settled order.
 - `GET /api/orders/admin` — admin-only, every user's orders.

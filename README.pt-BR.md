@@ -15,11 +15,11 @@ Sobe este serviço mais seu próprio Postgres e RabbitMQ. API em `localhost:8084
 
 ## Rodar como parte do sistema
 
-Implantado pelo chart Helm `orchestration` junto com os outros quatro serviços de backend e o frontend — ver [`../orchestration/README.pt-BR.md`](../orchestration/README.pt-BR.md). Acessado pelo Ingress compartilhado em `/api/orders/*` e `/api/library`.
+Implantado pelo chart Helm [`orchestration`](https://github.com/tc2-fiap/orchestration) junto com os outros quatro serviços de backend e o frontend — ver [`../orchestration/README.pt-BR.md`](../orchestration/README.pt-BR.md). Acessado pelo Ingress compartilhado em `/api/orders/*` e `/api/library`.
 
 ## O que tem aqui
 
-- `Domain/Order.cs` — `Price` é um **snapshot**, lido de forma síncrona do `catalog-api` no momento da criação e nunca buscado novamente; `Status` só avança, nunca retrocede.
+- `Domain/Order.cs` — `Price` é um **snapshot**, lido de forma síncrona do [`catalog-api`](https://github.com/tc2-fiap/catalog-api) no momento da criação e nunca buscado novamente; `Status` só avança, nunca retrocede.
 - `Domain/OrderEvent.cs` — o log de auditoria por pedido (payloads de `OrderPlacedEvent`/`PaymentProcessedEvent`, admin-only via `GET /api/orders/{id}/events`).
 - Publica `OrderPlacedEvent` na mesma transação da escrita do pedido (outbox do EF Core); consome `PaymentProcessedEvent`, idempotente por `OrderId` — uma entrega tardia ou duplicada nunca reverte um pedido já resolvido.
 - `GET /api/orders/admin` — somente admin, pedidos de todos os usuários.
