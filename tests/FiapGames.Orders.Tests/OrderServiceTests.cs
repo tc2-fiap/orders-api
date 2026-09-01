@@ -169,10 +169,10 @@ public class OrderServiceTests
     {
         var orderA = new Order(Guid.NewGuid(), [(Guid.NewGuid(), 29.99m)]);
         var orderB = new Order(Guid.NewGuid(), [(Guid.NewGuid(), 49.13m)]);
-        _repository.GetOrdersPagedAdminAsync(Arg.Any<PagedRequest>(), Arg.Any<OrderStatus?>(), Arg.Any<DateTime?>(), Arg.Any<DateTime?>(), Arg.Any<CancellationToken>())
+        _repository.GetOrdersPagedAdminAsync(Arg.Any<PagedRequest>(), Arg.Any<OrderStatus?>(), Arg.Any<DateTime?>(), Arg.Any<DateTime?>(), Arg.Any<string?>(), Arg.Any<List<Guid>?>(), Arg.Any<List<Guid>?>(), Arg.Any<decimal?>(), Arg.Any<decimal?>(), Arg.Any<CancellationToken>())
             .Returns(new PagedResult<Order>([orderA, orderB], 2, 1, 10));
 
-        var result = await _sut.GetAllOrdersAdminAsync(new PagedRequest(), null, null, null);
+        var result = await _sut.GetAllOrdersAdminAsync(new PagedRequest(), null, null, null, null, null, null, null, null);
 
         Assert.Equal(2, result.Items.Count);
         Assert.Contains(result.Items, i => i.UserId == orderA.UserId);
@@ -182,12 +182,55 @@ public class OrderServiceTests
     [Fact]
     public async Task GetAllOrdersAdminAsync_ParsesStatusFilterAndForwardsToRepository()
     {
-        _repository.GetOrdersPagedAdminAsync(Arg.Any<PagedRequest>(), Arg.Any<OrderStatus?>(), Arg.Any<DateTime?>(), Arg.Any<DateTime?>(), Arg.Any<CancellationToken>())
+        _repository.GetOrdersPagedAdminAsync(Arg.Any<PagedRequest>(), Arg.Any<OrderStatus?>(), Arg.Any<DateTime?>(), Arg.Any<DateTime?>(), Arg.Any<string?>(), Arg.Any<List<Guid>?>(), Arg.Any<List<Guid>?>(), Arg.Any<decimal?>(), Arg.Any<decimal?>(), Arg.Any<CancellationToken>())
             .Returns(new PagedResult<Order>([], 0, 1, 10));
 
-        await _sut.GetAllOrdersAdminAsync(new PagedRequest(), "Paid", null, null);
+        await _sut.GetAllOrdersAdminAsync(new PagedRequest(), "Paid", null, null, null, null, null, null, null);
 
-        await _repository.Received(1).GetOrdersPagedAdminAsync(Arg.Any<PagedRequest>(), OrderStatus.Paid, null, null, Arg.Any<CancellationToken>());
+        await _repository.Received(1).GetOrdersPagedAdminAsync(Arg.Any<PagedRequest>(), OrderStatus.Paid, null, null, null, null, null, null, null, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetAllOrdersAdminAsync_ForwardsOrderIdAndPriceRangeFilters()
+    {
+        _repository.GetOrdersPagedAdminAsync(Arg.Any<PagedRequest>(), Arg.Any<OrderStatus?>(), Arg.Any<DateTime?>(), Arg.Any<DateTime?>(), Arg.Any<string?>(), Arg.Any<List<Guid>?>(), Arg.Any<List<Guid>?>(), Arg.Any<decimal?>(), Arg.Any<decimal?>(), Arg.Any<CancellationToken>())
+            .Returns(new PagedResult<Order>([], 0, 1, 10));
+
+        await _sut.GetAllOrdersAdminAsync(new PagedRequest(), null, null, null, "5d14c9b0", null, null, 10m, 200m);
+
+        await _repository.Received(1).GetOrdersPagedAdminAsync(Arg.Any<PagedRequest>(), null, null, null, "5d14c9b0", null, null, 10m, 200m, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetAllOrdersAdminAsync_ParsesCommaSeparatedUserAndGameIds()
+    {
+        var userId = Guid.NewGuid();
+        var gameId = Guid.NewGuid();
+        _repository.GetOrdersPagedAdminAsync(Arg.Any<PagedRequest>(), Arg.Any<OrderStatus?>(), Arg.Any<DateTime?>(), Arg.Any<DateTime?>(), Arg.Any<string?>(), Arg.Any<List<Guid>?>(), Arg.Any<List<Guid>?>(), Arg.Any<decimal?>(), Arg.Any<decimal?>(), Arg.Any<CancellationToken>())
+            .Returns(new PagedResult<Order>([], 0, 1, 10));
+
+        await _sut.GetAllOrdersAdminAsync(new PagedRequest(), null, null, null, null, $" {userId} ,", $"{gameId}", null, null);
+
+        await _repository.Received(1).GetOrdersPagedAdminAsync(
+            Arg.Any<PagedRequest>(), null, null, null, null,
+            Arg.Is<List<Guid>>(ids => ids.Count == 1 && ids[0] == userId),
+            Arg.Is<List<Guid>>(ids => ids.Count == 1 && ids[0] == gameId),
+            null, null, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetAllOrdersAdminAsync_WhenNameSearchMatchesNobody_ForwardsEmptyListNotNull()
+    {
+        _repository.GetOrdersPagedAdminAsync(Arg.Any<PagedRequest>(), Arg.Any<OrderStatus?>(), Arg.Any<DateTime?>(), Arg.Any<DateTime?>(), Arg.Any<string?>(), Arg.Any<List<Guid>?>(), Arg.Any<List<Guid>?>(), Arg.Any<decimal?>(), Arg.Any<decimal?>(), Arg.Any<CancellationToken>())
+            .Returns(new PagedResult<Order>([], 0, 1, 10));
+
+        await _sut.GetAllOrdersAdminAsync(new PagedRequest(), null, null, null, null, string.Empty, null, null, null);
+
+        await _repository.Received(1).GetOrdersPagedAdminAsync(
+            Arg.Any<PagedRequest>(), null, null, null, null,
+            Arg.Is<List<Guid>>(ids => ids.Count == 0),
+            Arg.Is<List<Guid>>(ids => ids == null),
+            null, null, Arg.Any<CancellationToken>());
     }
 
     [Fact]

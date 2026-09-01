@@ -90,7 +90,7 @@ public sealed class OrderRepository : IOrderRepository
         return new PagedResult<OrderEvent>(items, totalCount, request.Page ?? 1, request.PageSize ?? 10);
     }
 
-    public async Task<PagedResult<Order>> GetOrdersPagedAdminAsync(PagedRequest request, OrderStatus? status, DateTime? from, DateTime? to, CancellationToken cancellationToken = default)
+    public async Task<PagedResult<Order>> GetOrdersPagedAdminAsync(PagedRequest request, OrderStatus? status, DateTime? from, DateTime? to, string? orderId, List<Guid>? userIds, List<Guid>? gameIds, decimal? minPrice, decimal? maxPrice, CancellationToken cancellationToken = default)
     {
         var query = _context.Orders.Include(o => o.Items).AsQueryable();
 
@@ -100,6 +100,19 @@ public sealed class OrderRepository : IOrderRepository
             query = query.Where(o => o.CreatedAtUtc >= from.Value);
         if (to.HasValue)
             query = query.Where(o => o.CreatedAtUtc <= to.Value);
+        if (!string.IsNullOrWhiteSpace(orderId))
+            query = query.Where(o => EF.Functions.ILike(o.Id.ToString(), $"%{orderId}%"));
+        if (userIds is not null)
+            query = query.Where(o => userIds.Contains(o.UserId));
+        if (gameIds is not null)
+            query = query.Where(o => o.Items.Any(oi => gameIds.Contains(oi.GameId)));
+        // o.TotalPrice is a computed, unmapped C# property (sum over the
+        // Items navigation) — EF Core can't translate a direct reference to
+        // it into SQL, so the equivalent Items.Sum(...) is used here instead.
+        if (minPrice.HasValue)
+            query = query.Where(o => o.Items.Sum(i => i.Price) >= minPrice.Value);
+        if (maxPrice.HasValue)
+            query = query.Where(o => o.Items.Sum(i => i.Price) <= maxPrice.Value);
 
         query = query.OrderBy(o => o.CreatedAtUtc);
 

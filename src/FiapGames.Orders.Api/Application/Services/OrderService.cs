@@ -132,12 +132,30 @@ public sealed class OrderService : IOrderService
         return Result.Success();
     }
 
-    public async Task<PagedResult<OrderResponse>> GetAllOrdersAdminAsync(PagedRequest request, string? status, DateTime? from, DateTime? to, CancellationToken cancellationToken = default)
+    public async Task<PagedResult<OrderResponse>> GetAllOrdersAdminAsync(PagedRequest request, string? status, DateTime? from, DateTime? to, string? orderId, string? userIds, string? gameIds, decimal? minPrice, decimal? maxPrice, CancellationToken cancellationToken = default)
     {
         OrderStatus? parsedStatus = Enum.TryParse<OrderStatus>(status, out var s) ? s : null;
-        var paged = await _repository.GetOrdersPagedAdminAsync(request, parsedStatus, from, to, cancellationToken);
+        var parsedUserIds = ParseGuidList(userIds);
+        var parsedGameIds = ParseGuidList(gameIds);
+        var paged = await _repository.GetOrdersPagedAdminAsync(request, parsedStatus, from, to, orderId, parsedUserIds, parsedGameIds, minPrice, maxPrice, cancellationToken);
         var items = paged.Items.Select(OrderResponse.FromDomain).ToList();
         return new PagedResult<OrderResponse>(items, paged.TotalCount, paged.Page, paged.PageSize);
+    }
+
+    // A comma-separated id list resolved on the frontend from a user-name or
+    // item-name search (see notes.md 60) — null means "no filter", a
+    // present-but-empty result means "the name search matched nothing",
+    // which must still filter the order list down to zero rows.
+    private static List<Guid>? ParseGuidList(string? raw)
+    {
+        if (raw is null)
+            return null;
+
+        return raw.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Select(segment => Guid.TryParse(segment, out var id) ? (Guid?)id : null)
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .ToList();
     }
 
     public async Task<Result<IReadOnlyList<OrderEventResponse>>> GetOrderEventsAdminAsync(Guid orderId, CancellationToken cancellationToken = default)

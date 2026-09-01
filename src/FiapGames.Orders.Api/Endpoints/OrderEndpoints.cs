@@ -39,10 +39,15 @@ public static class OrderEndpoints
             string? status,
             DateTime? from,
             DateTime? to,
+            string? orderId,
+            string? userIds,
+            string? gameIds,
+            decimal? minPrice,
+            decimal? maxPrice,
             IOrderService service,
             CancellationToken cancellationToken) =>
         {
-            var result = await service.GetAllOrdersAdminAsync(request, status, from, to, cancellationToken);
+            var result = await service.GetAllOrdersAdminAsync(request, status, from, to, orderId, userIds, gameIds, minPrice, maxPrice, cancellationToken);
             return Results.Ok(result);
         }).RequireAuthorization(p => p.RequireRole("Admin"));
 
