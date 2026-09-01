@@ -132,9 +132,10 @@ public sealed class OrderService : IOrderService
         return Result.Success();
     }
 
-    public async Task<PagedResult<OrderResponse>> GetAllOrdersAdminAsync(PagedRequest request, CancellationToken cancellationToken = default)
+    public async Task<PagedResult<OrderResponse>> GetAllOrdersAdminAsync(PagedRequest request, string? status, DateTime? from, DateTime? to, CancellationToken cancellationToken = default)
     {
-        var paged = await _repository.GetPagedAsync(request, cancellationToken);
+        OrderStatus? parsedStatus = Enum.TryParse<OrderStatus>(status, out var s) ? s : null;
+        var paged = await _repository.GetOrdersPagedAdminAsync(request, parsedStatus, from, to, cancellationToken);
         var items = paged.Items.Select(OrderResponse.FromDomain).ToList();
         return new PagedResult<OrderResponse>(items, paged.TotalCount, paged.Page, paged.PageSize);
     }

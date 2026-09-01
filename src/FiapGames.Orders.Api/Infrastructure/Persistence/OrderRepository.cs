@@ -90,6 +90,25 @@ public sealed class OrderRepository : IOrderRepository
         return new PagedResult<OrderEvent>(items, totalCount, request.Page ?? 1, request.PageSize ?? 10);
     }
 
+    public async Task<PagedResult<Order>> GetOrdersPagedAdminAsync(PagedRequest request, OrderStatus? status, DateTime? from, DateTime? to, CancellationToken cancellationToken = default)
+    {
+        var query = _context.Orders.Include(o => o.Items).AsQueryable();
+
+        if (status.HasValue)
+            query = query.Where(o => o.Status == status.Value);
+        if (from.HasValue)
+            query = query.Where(o => o.CreatedAtUtc >= from.Value);
+        if (to.HasValue)
+            query = query.Where(o => o.CreatedAtUtc <= to.Value);
+
+        query = query.OrderBy(o => o.CreatedAtUtc);
+
+        var totalCount = await query.LongCountAsync(cancellationToken);
+        var items = await query.Skip(request.Skip).Take(request.PageSize ?? 10).ToListAsync(cancellationToken);
+
+        return new PagedResult<Order>(items, totalCount, request.Page ?? 1, request.PageSize ?? 10);
+    }
+
     public Task AddEventAsync(OrderEvent orderEvent, CancellationToken cancellationToken = default)
     {
         _context.OrderEvents.Add(orderEvent);

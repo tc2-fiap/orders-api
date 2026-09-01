@@ -169,14 +169,25 @@ public class OrderServiceTests
     {
         var orderA = new Order(Guid.NewGuid(), [(Guid.NewGuid(), 29.99m)]);
         var orderB = new Order(Guid.NewGuid(), [(Guid.NewGuid(), 49.13m)]);
-        _repository.GetPagedAsync(Arg.Any<PagedRequest>(), Arg.Any<CancellationToken>())
+        _repository.GetOrdersPagedAdminAsync(Arg.Any<PagedRequest>(), Arg.Any<OrderStatus?>(), Arg.Any<DateTime?>(), Arg.Any<DateTime?>(), Arg.Any<CancellationToken>())
             .Returns(new PagedResult<Order>([orderA, orderB], 2, 1, 10));
 
-        var result = await _sut.GetAllOrdersAdminAsync(new PagedRequest());
+        var result = await _sut.GetAllOrdersAdminAsync(new PagedRequest(), null, null, null);
 
         Assert.Equal(2, result.Items.Count);
         Assert.Contains(result.Items, i => i.UserId == orderA.UserId);
         Assert.Contains(result.Items, i => i.UserId == orderB.UserId);
+    }
+
+    [Fact]
+    public async Task GetAllOrdersAdminAsync_ParsesStatusFilterAndForwardsToRepository()
+    {
+        _repository.GetOrdersPagedAdminAsync(Arg.Any<PagedRequest>(), Arg.Any<OrderStatus?>(), Arg.Any<DateTime?>(), Arg.Any<DateTime?>(), Arg.Any<CancellationToken>())
+            .Returns(new PagedResult<Order>([], 0, 1, 10));
+
+        await _sut.GetAllOrdersAdminAsync(new PagedRequest(), "Paid", null, null);
+
+        await _repository.Received(1).GetOrdersPagedAdminAsync(Arg.Any<PagedRequest>(), OrderStatus.Paid, null, null, Arg.Any<CancellationToken>());
     }
 
     [Fact]

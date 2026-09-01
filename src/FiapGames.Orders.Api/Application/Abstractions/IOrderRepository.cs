@@ -24,5 +24,7 @@ public interface IOrderRepository : IRepository<Order>
 
     Task<PagedResult<OrderEvent>> GetAllEventsAdminAsync(PagedRequest request, string? eventType, DateTime? from, DateTime? to, CancellationToken cancellationToken = default);
 
+    Task<PagedResult<Order>> GetOrdersPagedAdminAsync(PagedRequest request, OrderStatus? status, DateTime? from, DateTime? to, CancellationToken cancellationToken = default);
+
     Task AddEventAsync(OrderEvent orderEvent, CancellationToken cancellationToken = default);
 }
