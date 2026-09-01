@@ -44,6 +44,7 @@ builder.Services.AddGlobalExceptionHandling();
 
 builder.Services.AddScoped<IOrderRepository, OrderRepository>();
 builder.Services.AddScoped<IOrderService, OrderService>();
+builder.Services.AddSingleton<IOrderStatusBroadcaster, OrderStatusBroadcaster>();
 builder.Services.AddValidatorsFromAssemblyContaining<CreateOrderRequestValidator>();
 
 builder.Services.AddHttpClient<ICatalogClient, CatalogApiClient>(client =>

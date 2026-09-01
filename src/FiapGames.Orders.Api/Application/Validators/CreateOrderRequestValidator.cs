@@ -7,6 +7,11 @@ public sealed class CreateOrderRequestValidator : AbstractValidator<CreateOrderR
 {
     public CreateOrderRequestValidator()
     {
-        RuleFor(x => x.GameId).NotEmpty();
+        RuleFor(x => x.GameIds)
+            .NotEmpty()
+            .Must(ids => ids.Distinct().Count() == ids.Count)
+            .WithMessage("Duplicate game ids are not allowed in the same order.");
+
+        RuleForEach(x => x.GameIds).NotEmpty();
     }
 }

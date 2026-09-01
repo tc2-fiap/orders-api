@@ -10,7 +10,7 @@ public interface IOrderService
 
     Task<Result<OrderResponse>> GetByIdAsync(Guid userId, Guid orderId, CancellationToken cancellationToken = default);
 
-    Task<PagedResult<OrderResponse>> GetLibraryAsync(Guid userId, PagedRequest request, CancellationToken cancellationToken = default);
+    Task<PagedResult<LibraryItemResponse>> GetLibraryAsync(Guid userId, PagedRequest request, CancellationToken cancellationToken = default);
 
     Task<PagedResult<OrderResponse>> GetAllOrdersAdminAsync(PagedRequest request, CancellationToken cancellationToken = default);
 

@@ -22,6 +22,9 @@ public class OrderServiceTests
     {
         var logger = Substitute.For<ILogger<OrderService>>();
         _sut = new OrderService(_repository, _catalogClient, _publishEndpoint, logger);
+
+        _repository.GetConflictingGameIdsAsync(Arg.Any<Guid>(), Arg.Any<IEnumerable<Guid>>(), Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<Guid>());
     }
 
     [Fact]
@@ -32,10 +35,12 @@ public class OrderServiceTests
         _catalogClient.GetGameAsync(gameId, "token", Arg.Any<CancellationToken>())
             .Returns(new CatalogGame(gameId, 29.99m));
 
-        var result = await _sut.CreateAsync(userId, new CreateOrderRequest(gameId), "token");
+        var result = await _sut.CreateAsync(userId, new CreateOrderRequest([gameId]), "token");
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(29.99m, result.Value.Price);
+        Assert.Equal(29.99m, result.Value.TotalPrice);
+        Assert.Single(result.Value.Items);
+        Assert.Equal(gameId, result.Value.Items[0].GameId);
         Assert.Equal("Pending", result.Value.Status);
         await _repository.Received(1).AddAsync(Arg.Any<Order>(), Arg.Any<CancellationToken>());
         await _repository.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
@@ -43,13 +48,33 @@ public class OrderServiceTests
     }
 
     [Fact]
-    public async Task CreateAsync_WhenUserAlreadyHasAnActiveOrderForGame_ReturnsConflictAndDoesNotPublish()
+    public async Task CreateAsync_WithMultipleGames_SnapshotsEachPriceAndPublishesAllIds()
+    {
+        var userId = Guid.NewGuid();
+        var gameIdA = Guid.NewGuid();
+        var gameIdB = Guid.NewGuid();
+        _catalogClient.GetGameAsync(gameIdA, "token", Arg.Any<CancellationToken>()).Returns(new CatalogGame(gameIdA, 29.99m));
+        _catalogClient.GetGameAsync(gameIdB, "token", Arg.Any<CancellationToken>()).Returns(new CatalogGame(gameIdB, 49.13m));
+
+        var result = await _sut.CreateAsync(userId, new CreateOrderRequest([gameIdA, gameIdB]), "token");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(79.12m, result.Value.TotalPrice);
+        Assert.Equal(2, result.Value.Items.Count);
+        await _publishEndpoint.Received(1).Publish(
+            Arg.Is<OrderPlacedEvent>(e => e.GameIds.Count == 2 && e.GameIds.Contains(gameIdA) && e.GameIds.Contains(gameIdB) && e.TotalPrice == 79.12m),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenUserAlreadyHasAnActiveOrderForAGame_RejectsWholeOrderAndDoesNotPublish()
     {
         var userId = Guid.NewGuid();
         var gameId = Guid.NewGuid();
-        _repository.HasActiveOrderAsync(userId, gameId, Arg.Any<CancellationToken>()).Returns(true);
+        _repository.GetConflictingGameIdsAsync(userId, Arg.Any<IEnumerable<Guid>>(), Arg.Any<CancellationToken>())
+            .Returns(new[] { gameId });
 
-        var result = await _sut.CreateAsync(userId, new CreateOrderRequest(gameId), "token");
+        var result = await _sut.CreateAsync(userId, new CreateOrderRequest([gameId]), "token");
 
         Assert.True(result.IsFailure);
         Assert.Equal(ErrorType.Conflict, result.Error!.Type);
@@ -63,7 +88,7 @@ public class OrderServiceTests
         var gameId = Guid.NewGuid();
         _catalogClient.GetGameAsync(gameId, "token", Arg.Any<CancellationToken>()).Returns((CatalogGame?)null);
 
-        var result = await _sut.CreateAsync(Guid.NewGuid(), new CreateOrderRequest(gameId), "token");
+        var result = await _sut.CreateAsync(Guid.NewGuid(), new CreateOrderRequest([gameId]), "token");
 
         Assert.True(result.IsFailure);
         Assert.Equal(ErrorType.NotFound, result.Error!.Type);
@@ -73,7 +98,7 @@ public class OrderServiceTests
     [Fact]
     public async Task GetByIdAsync_WhenOrderBelongsToAnotherUser_ReturnsNotFound()
     {
-        var order = new Order(Guid.NewGuid(), Guid.NewGuid(), 29.99m);
+        var order = new Order(Guid.NewGuid(), [(Guid.NewGuid(), 29.99m)]);
         _repository.GetByIdAsync(order.Id, Arg.Any<CancellationToken>()).Returns(order);
 
         var result = await _sut.GetByIdAsync(Guid.NewGuid(), order.Id);
@@ -86,7 +111,7 @@ public class OrderServiceTests
     public async Task GetByIdAsync_WhenOrderBelongsToUser_ReturnsOrder()
     {
         var userId = Guid.NewGuid();
-        var order = new Order(userId, Guid.NewGuid(), 29.99m);
+        var order = new Order(userId, [(Guid.NewGuid(), 29.99m)]);
         _repository.GetByIdAsync(order.Id, Arg.Any<CancellationToken>()).Returns(order);
 
         var result = await _sut.GetByIdAsync(userId, order.Id);
@@ -96,25 +121,24 @@ public class OrderServiceTests
     }
 
     [Fact]
-    public async Task GetLibraryAsync_MapsPaidOrdersToResponses()
+    public async Task GetLibraryAsync_DelegatesToRepositoryLibraryProjection()
     {
         var userId = Guid.NewGuid();
-        var order = new Order(userId, Guid.NewGuid(), 29.99m);
-        order.MarkPaid();
-        _repository.GetPaidByUserIdAsync(userId, Arg.Any<PagedRequest>(), Arg.Any<CancellationToken>())
-            .Returns(new PagedResult<Order>([order], 1, 1, 10));
+        var libraryItem = new LibraryItemResponse(Guid.NewGuid(), Guid.NewGuid(), DateTime.UtcNow);
+        _repository.GetLibraryItemsByUserIdAsync(userId, Arg.Any<PagedRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new PagedResult<LibraryItemResponse>([libraryItem], 1, 1, 10));
 
         var result = await _sut.GetLibraryAsync(userId, new PagedRequest());
 
         Assert.Single(result.Items);
-        Assert.Equal("Paid", result.Items.First().Status);
+        Assert.Equal(libraryItem.GameId, result.Items.First().GameId);
     }
 
     [Fact]
     public async Task GetAllOrdersAdminAsync_ReturnsOrdersAcrossUsers()
     {
-        var orderA = new Order(Guid.NewGuid(), Guid.NewGuid(), 29.99m);
-        var orderB = new Order(Guid.NewGuid(), Guid.NewGuid(), 49.13m);
+        var orderA = new Order(Guid.NewGuid(), [(Guid.NewGuid(), 29.99m)]);
+        var orderB = new Order(Guid.NewGuid(), [(Guid.NewGuid(), 49.13m)]);
         _repository.GetPagedAsync(Arg.Any<PagedRequest>(), Arg.Any<CancellationToken>())
             .Returns(new PagedResult<Order>([orderA, orderB], 2, 1, 10));
 
@@ -139,7 +163,7 @@ public class OrderServiceTests
     [Fact]
     public async Task GetOrderEventsAdminAsync_WhenOrderExists_ReturnsItsEvents()
     {
-        var order = new Order(Guid.NewGuid(), Guid.NewGuid(), 29.99m);
+        var order = new Order(Guid.NewGuid(), [(Guid.NewGuid(), 29.99m)]);
         _repository.GetByIdAsync(order.Id, Arg.Any<CancellationToken>()).Returns(order);
         var orderEvent = new OrderEvent(order.Id, "OrderPlacedEvent", "{}");
         _repository.GetEventsByOrderIdAsync(order.Id, Arg.Any<CancellationToken>())

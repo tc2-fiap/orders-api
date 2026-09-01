@@ -6,21 +6,21 @@ public class Order : Entity
 {
     public Guid UserId { get; private set; }
 
-    public Guid GameId { get; private set; }
+    private readonly List<OrderItem> _items = new();
 
-    // Snapshotted at order time — never a live reference to CatalogAPI's
-    // current price. See instructions.md §4.3.
-    public decimal Price { get; private set; }
+    public IReadOnlyList<OrderItem> Items => _items;
+
+    // Sum of each item's snapshotted price — never a live catalog re-read.
+    public decimal TotalPrice => _items.Sum(i => i.Price);
 
     public OrderStatus Status { get; private set; }
 
     private Order() { }
 
-    public Order(Guid userId, Guid gameId, decimal price)
+    public Order(Guid userId, IEnumerable<(Guid GameId, decimal Price)> items)
     {
         UserId = userId;
-        GameId = gameId;
-        Price = price;
+        _items = items.Select(i => new OrderItem(Id, userId, i.GameId, i.Price)).ToList();
         Status = OrderStatus.Pending;
     }
 
@@ -35,6 +35,8 @@ public class Order : Entity
             return false;
 
         Status = OrderStatus.Paid;
+        foreach (var item in _items)
+            item.SyncStatus(Status);
         Touch();
         return true;
     }
@@ -45,6 +47,8 @@ public class Order : Entity
             return false;
 
         Status = OrderStatus.Failed;
+        foreach (var item in _items)
+            item.SyncStatus(Status);
         Touch();
         return true;
     }

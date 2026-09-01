@@ -1,4 +1,5 @@
 using FiapGames.Orders.Api.Application.Abstractions;
+using FiapGames.Orders.Api.Application.Dtos;
 using FiapGames.Orders.Api.Domain;
 using FiapGames.Shared.Kernel.Pagination;
 using Microsoft.EntityFrameworkCore;
@@ -15,11 +16,11 @@ public sealed class OrderRepository : IOrderRepository
     }
 
     public Task<Order?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
-        _context.Orders.FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
+        _context.Orders.Include(o => o.Items).FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
 
     public async Task<PagedResult<Order>> GetPagedAsync(PagedRequest request, CancellationToken cancellationToken = default)
     {
-        var query = _context.Orders.OrderBy(o => o.CreatedAtUtc);
+        var query = _context.Orders.Include(o => o.Items).OrderBy(o => o.CreatedAtUtc);
 
         var totalCount = await query.LongCountAsync(cancellationToken);
         var items = await query.Skip(request.Skip).Take(request.PageSize ?? 10).ToListAsync(cancellationToken);
@@ -27,20 +28,37 @@ public sealed class OrderRepository : IOrderRepository
         return new PagedResult<Order>(items, totalCount, request.Page ?? 1, request.PageSize ?? 10);
     }
 
-    public async Task<PagedResult<Order>> GetPaidByUserIdAsync(Guid userId, PagedRequest request, CancellationToken cancellationToken = default)
+    public async Task<PagedResult<LibraryItemResponse>> GetLibraryItemsByUserIdAsync(Guid userId, PagedRequest request, CancellationToken cancellationToken = default)
     {
-        var query = _context.Orders
-            .Where(o => o.UserId == userId && o.Status == OrderStatus.Paid)
-            .OrderBy(o => o.CreatedAtUtc);
+        // Order by the raw column before projecting — EF Core can't
+        // translate OrderByDescending over a property of an already
+        // constructed LibraryItemResponse record.
+        var query = _context.OrderItems
+            .Where(i => i.UserId == userId && i.Status == OrderStatus.Paid)
+            .OrderByDescending(i => i.UpdatedAtUtc ?? i.CreatedAtUtc)
+            .Select(i => new LibraryItemResponse(i.GameId, i.OrderId, i.UpdatedAtUtc ?? i.CreatedAtUtc));
 
         var totalCount = await query.LongCountAsync(cancellationToken);
         var items = await query.Skip(request.Skip).Take(request.PageSize ?? 10).ToListAsync(cancellationToken);
 
-        return new PagedResult<Order>(items, totalCount, request.Page ?? 1, request.PageSize ?? 10);
+        return new PagedResult<LibraryItemResponse>(items, totalCount, request.Page ?? 1, request.PageSize ?? 10);
     }
 
-    public Task<bool> HasActiveOrderAsync(Guid userId, Guid gameId, CancellationToken cancellationToken = default) =>
-        _context.Orders.AnyAsync(o => o.UserId == userId && o.GameId == gameId && o.Status != OrderStatus.Failed, cancellationToken);
+    // A fast, friendly pre-flight check — the actual, race-proof
+    // enforcement is the partial unique index on order_items(user_id,
+    // game_id) (see OrdersDbContext), which OrderService falls back to
+    // catching as a DbUpdateException if two concurrent requests both pass
+    // this check for the same user+game.
+    public async Task<IReadOnlyList<Guid>> GetConflictingGameIdsAsync(Guid userId, IEnumerable<Guid> gameIds, CancellationToken cancellationToken = default)
+    {
+        var requestedIds = gameIds.ToList();
+
+        return await _context.OrderItems
+            .Where(i => i.UserId == userId && requestedIds.Contains(i.GameId) && i.Status != OrderStatus.Failed)
+            .Select(i => i.GameId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+    }
 
     public async Task<IReadOnlyList<OrderEvent>> GetEventsByOrderIdAsync(Guid orderId, CancellationToken cancellationToken = default) =>
         await _context.OrderEvents

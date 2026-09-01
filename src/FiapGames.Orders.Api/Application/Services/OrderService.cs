@@ -6,7 +6,9 @@ using FiapGames.Orders.Api.Domain;
 using FiapGames.Shared.Kernel.Pagination;
 using FiapGames.Shared.Kernel.Results;
 using MassTransit;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 
 namespace FiapGames.Orders.Api.Application.Services;
 
@@ -31,31 +33,42 @@ public sealed class OrderService : IOrderService
 
     public async Task<Result<OrderResponse>> CreateAsync(Guid userId, CreateOrderRequest request, string bearerToken, CancellationToken cancellationToken = default)
     {
-        // Checked before the CatalogAPI round-trip since it only needs
-        // local data — a user already owning this game (Paid) or having a
-        // purchase in flight (Pending) is rejected here; a prior Failed
-        // order never blocks a retry.
-        if (await _repository.HasActiveOrderAsync(userId, request.GameId, cancellationToken))
+        var gameIds = request.GameIds.Distinct().ToList();
+
+        // Checked before any CatalogAPI round-trip since it only needs
+        // local data. The whole order is rejected if any single game
+        // conflicts — a user already owning it (Paid) or having a purchase
+        // for it in flight (Pending); a prior Failed order never blocks a
+        // retry.
+        var conflictingIds = await _repository.GetConflictingGameIdsAsync(userId, gameIds, cancellationToken);
+        if (conflictingIds.Count > 0)
         {
-            _logger.LogWarning("Order rejected: user {UserId} already has an active order for game {GameId}", userId, request.GameId);
-            return Result.Failure<OrderResponse>(Error.Conflict("You already own this game or have a pending order for it."));
+            _logger.LogWarning("Order rejected: user {UserId} already has an active order for game(s) {GameIds}", userId, conflictingIds);
+            return Result.Failure<OrderResponse>(Error.Conflict(
+                $"You already own or have a pending order for: {string.Join(", ", conflictingIds)}"));
         }
 
-        // The client supplies only a GameId — price always comes from a
-        // synchronous read against CatalogAPI, never from the request body.
-        // See instructions.md §6.
-        var game = await _catalogClient.GetGameAsync(request.GameId, bearerToken, cancellationToken);
-        if (game is null)
+        // The client supplies only GameIds — each item's price always comes
+        // from a synchronous read against CatalogAPI, never from the
+        // request body. See instructions.md §6.
+        var items = new List<(Guid GameId, decimal Price)>();
+        foreach (var gameId in gameIds)
         {
-            _logger.LogWarning("Order rejected: game {GameId} not found in catalog", request.GameId);
-            return Result.Failure<OrderResponse>(Error.NotFound($"Game '{request.GameId}' was not found."));
+            var game = await _catalogClient.GetGameAsync(gameId, bearerToken, cancellationToken);
+            if (game is null)
+            {
+                _logger.LogWarning("Order rejected: game {GameId} not found in catalog", gameId);
+                return Result.Failure<OrderResponse>(Error.NotFound($"Game '{gameId}' was not found."));
+            }
+
+            items.Add((game.Id, game.Price));
         }
 
-        var order = new Order(userId, game.Id, game.Price);
+        var order = new Order(userId, items);
 
         await _repository.AddAsync(order, cancellationToken);
 
-        var orderPlacedEvent = new OrderPlacedEvent(order.Id, userId, order.GameId, order.Price);
+        var orderPlacedEvent = new OrderPlacedEvent(order.Id, userId, order.Items.Select(i => i.GameId).ToList(), order.TotalPrice);
 
         // Publish before SaveChanges: MassTransit's EF Core bus outbox
         // captures this call and flushes it in the same transaction as the
@@ -69,9 +82,23 @@ public sealed class OrderService : IOrderService
             new OrderEvent(order.Id, "OrderPlacedEvent", JsonSerializer.Serialize(orderPlacedEvent)),
             cancellationToken);
 
-        await _repository.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _repository.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            // The GetConflictingGameIdsAsync pre-check above is TOCTOU-racy
+            // under concurrent requests — this is the actual backstop: the
+            // partial unique index on order_items(user_id, game_id) (see
+            // OrdersDbContext) rejects the insert atomically if another
+            // request for the same user+game won the race in between.
+            _logger.LogWarning(ex, "Order rejected for user {UserId}: a concurrent request already claimed one of {GameIds}", userId, gameIds);
+            return Result.Failure<OrderResponse>(Error.Conflict(
+                "You already own or have a pending order for one of the requested games."));
+        }
 
-        _logger.LogInformation("Order {OrderId} placed by {UserId} for game {GameId} at {Price}", order.Id, userId, order.GameId, order.Price);
+        _logger.LogInformation("Order {OrderId} placed by {UserId} for {ItemCount} game(s) at total {TotalPrice}", order.Id, userId, order.Items.Count, order.TotalPrice);
 
         return Result.Success(OrderResponse.FromDomain(order));
     }
@@ -88,12 +115,8 @@ public sealed class OrderService : IOrderService
         return Result.Success(OrderResponse.FromDomain(order));
     }
 
-    public async Task<PagedResult<OrderResponse>> GetLibraryAsync(Guid userId, PagedRequest request, CancellationToken cancellationToken = default)
-    {
-        var paged = await _repository.GetPaidByUserIdAsync(userId, request, cancellationToken);
-        var items = paged.Items.Select(OrderResponse.FromDomain).ToList();
-        return new PagedResult<OrderResponse>(items, paged.TotalCount, paged.Page, paged.PageSize);
-    }
+    public async Task<PagedResult<LibraryItemResponse>> GetLibraryAsync(Guid userId, PagedRequest request, CancellationToken cancellationToken = default) =>
+        await _repository.GetLibraryItemsByUserIdAsync(userId, request, cancellationToken);
 
     public async Task<PagedResult<OrderResponse>> GetAllOrdersAdminAsync(PagedRequest request, CancellationToken cancellationToken = default)
     {

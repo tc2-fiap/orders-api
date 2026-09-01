@@ -1,6 +1,9 @@
+using System.Runtime.CompilerServices;
 using System.Security.Claims;
 using FiapGames.Orders.Api.Application.Abstractions;
 using FiapGames.Orders.Api.Application.Dtos;
+using FiapGames.Orders.Api.Domain;
+using FiapGames.Orders.Api.Infrastructure.Messaging;
 using FiapGames.Shared.Infrastructure.Extensions;
 using FiapGames.Shared.Kernel.Pagination;
 using FluentValidation;
@@ -44,6 +47,16 @@ public static class OrderEndpoints
             return result.ToHttpResult();
         });
 
+        group.MapGet("/{id:guid}/stream", async (Guid id, IOrderService service, IOrderStatusBroadcaster broadcaster, HttpContext httpContext, CancellationToken cancellationToken) =>
+        {
+            var userId = GetUserId(httpContext.User);
+            var result = await service.GetByIdAsync(userId, id, cancellationToken);
+            if (result.IsFailure)
+                return result.ToHttpResult();
+
+            return TypedResults.ServerSentEvents(StreamOrderStatusAsync(result.Value, broadcaster, cancellationToken), eventType: "order-status");
+        });
+
         group.MapGet("/{id:guid}/events", async (Guid id, IOrderService service, CancellationToken cancellationToken) =>
         {
             var result = await service.GetOrderEventsAdminAsync(id, cancellationToken);
@@ -80,5 +93,51 @@ public static class OrderEndpoints
     {
         var sub = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? user.FindFirstValue("sub");
         return Guid.Parse(sub!);
+    }
+
+    // Emits the order's current status once; if it's already terminal
+    // (Paid/Failed — e.g. a page refresh after the order already settled)
+    // the stream ends immediately without ever touching the broadcaster.
+    // Otherwise it waits on the broadcaster for the next update, bounded by
+    // a safety timeout well above the simulated gateway's processing delay.
+    private static async IAsyncEnumerable<OrderStatusEvent> StreamOrderStatusAsync(
+        OrderResponse order,
+        IOrderStatusBroadcaster broadcaster,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        yield return new OrderStatusEvent(order.Status);
+
+        if (order.Status != OrderStatus.Pending.ToString())
+            yield break;
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromMinutes(2));
+
+        var enumerator = broadcaster.Subscribe(order.Id, timeoutCts.Token).GetAsyncEnumerator(timeoutCts.Token);
+        try
+        {
+            while (true)
+            {
+                var moved = false;
+                try
+                {
+                    moved = await enumerator.MoveNextAsync();
+                }
+                catch (OperationCanceledException)
+                {
+                    // Client disconnected or the safety timeout elapsed —
+                    // end the stream quietly, nothing left to report.
+                }
+
+                if (!moved)
+                    yield break;
+
+                yield return new OrderStatusEvent(enumerator.Current.ToString());
+            }
+        }
+        finally
+        {
+            await enumerator.DisposeAsync();
+        }
     }
 }

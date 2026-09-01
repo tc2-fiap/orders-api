@@ -10,6 +10,6 @@ public enum PaymentStatus
     Rejected
 }
 
-public sealed record OrderPlacedEvent(Guid OrderId, Guid UserId, Guid GameId, decimal Price);
+public sealed record OrderPlacedEvent(Guid OrderId, Guid UserId, IReadOnlyList<Guid> GameIds, decimal TotalPrice);
 
-public sealed record PaymentProcessedEvent(Guid OrderId, Guid UserId, Guid GameId, PaymentStatus Status);
+public sealed record PaymentProcessedEvent(Guid OrderId, Guid UserId, PaymentStatus Status);
