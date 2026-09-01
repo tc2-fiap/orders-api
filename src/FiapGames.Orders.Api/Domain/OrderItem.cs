@@ -27,6 +27,15 @@ public sealed class OrderItem : Entity
     // this is a denormalized copy for the DB constraint's sake only.
     public OrderStatus Status { get; private set; }
 
+    // Library-only concept, deliberately separate from Status: removing a
+    // game from the library must never touch the underlying Order's
+    // one-way Pending->Paid|Failed state (the order stays Paid, on record,
+    // for audit history). Null means still in the library. Excluded from
+    // the partial unique index on (UserId, GameId) alongside Failed items
+    // (see OrdersDbContext), so a removed game frees itself up for
+    // repurchase. See notes.md 42's "Revisit if" clause.
+    public DateTime? RemovedFromLibraryAtUtc { get; private set; }
+
     private OrderItem() { }
 
     public OrderItem(Guid orderId, Guid userId, Guid gameId, decimal price)
@@ -42,5 +51,19 @@ public sealed class OrderItem : Entity
     {
         Status = status;
         Touch();
+    }
+
+    // One-way, like Order.Status transitions: once removed, stays removed.
+    // Only a currently-owned (Paid) item can be removed — Pending/Failed
+    // items were never in the library. Returns whether it actually
+    // applied, so a repeat request is a no-op rather than an error.
+    public bool RemoveFromLibrary()
+    {
+        if (Status != OrderStatus.Paid || RemovedFromLibraryAtUtc is not null)
+            return false;
+
+        RemovedFromLibraryAtUtc = DateTime.UtcNow;
+        Touch();
+        return true;
     }
 }

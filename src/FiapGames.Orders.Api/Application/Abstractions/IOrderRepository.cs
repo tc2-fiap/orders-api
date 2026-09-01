@@ -9,6 +9,12 @@ public interface IOrderRepository : IRepository<Order>
 {
     Task<PagedResult<LibraryItemResponse>> GetLibraryItemsByUserIdAsync(Guid userId, PagedRequest request, CancellationToken cancellationToken = default);
 
+    // The tracked OrderItem behind one library entry — still Paid and not
+    // already removed — so the caller can mutate it (RemoveFromLibrary)
+    // and have SaveChangesAsync persist the change. Null if the user
+    // doesn't currently own that game in their library.
+    Task<OrderItem?> GetOwnedLibraryItemAsync(Guid userId, Guid gameId, CancellationToken cancellationToken = default);
+
     // Of the given game ids, the subset the user already owns (Paid) or has
     // a purchase for in flight (Pending) — a Failed order never blocks a
     // retry. Empty means the whole set is clear to order.

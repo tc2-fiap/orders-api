@@ -75,4 +75,45 @@ public class OrderTests
         Assert.False(applied);
         Assert.Equal(OrderStatus.Paid, order.Status);
     }
+
+    [Fact]
+    public void RemoveFromLibrary_OnPaidItem_AppliesAndDoesNotTouchOrderStatus()
+    {
+        var order = NewOrder(29.99m);
+        order.MarkPaid();
+        var item = order.Items[0];
+
+        var applied = item.RemoveFromLibrary();
+
+        Assert.True(applied);
+        Assert.NotNull(item.RemovedFromLibraryAtUtc);
+        Assert.Equal(OrderStatus.Paid, order.Status);
+        Assert.Equal(OrderStatus.Paid, item.Status);
+    }
+
+    [Fact]
+    public void RemoveFromLibrary_OnPendingItem_IsNoOp()
+    {
+        var order = NewOrder(29.99m);
+
+        var applied = order.Items[0].RemoveFromLibrary();
+
+        Assert.False(applied);
+        Assert.Null(order.Items[0].RemovedFromLibraryAtUtc);
+    }
+
+    [Fact]
+    public void RemoveFromLibrary_CalledTwice_SecondCallIsNoOp()
+    {
+        var order = NewOrder(29.99m);
+        order.MarkPaid();
+        var item = order.Items[0];
+        item.RemoveFromLibrary();
+        var firstRemovedAt = item.RemovedFromLibraryAtUtc;
+
+        var applied = item.RemoveFromLibrary();
+
+        Assert.False(applied);
+        Assert.Equal(firstRemovedAt, item.RemovedFromLibraryAtUtc);
+    }
 }

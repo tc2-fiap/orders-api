@@ -86,6 +86,17 @@ public static class OrderEndpoints
             return Results.Ok(result);
         }).WithTags("Library").RequireAuthorization();
 
+        endpoints.MapDelete("/api/library/{gameId:guid}", async (
+            Guid gameId,
+            IOrderService service,
+            HttpContext httpContext,
+            CancellationToken cancellationToken) =>
+        {
+            var userId = GetUserId(httpContext.User);
+            var result = await service.RemoveFromLibraryAsync(userId, gameId, cancellationToken);
+            return result.ToHttpResult();
+        }).WithTags("Library").RequireAuthorization();
+
         return endpoints;
     }
 

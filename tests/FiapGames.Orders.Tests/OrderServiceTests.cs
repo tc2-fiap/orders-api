@@ -135,6 +135,36 @@ public class OrderServiceTests
     }
 
     [Fact]
+    public async Task RemoveFromLibraryAsync_WhenGameNotOwned_ReturnsNotFoundAndDoesNotSave()
+    {
+        _repository.GetOwnedLibraryItemAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns((OrderItem?)null);
+
+        var result = await _sut.RemoveFromLibraryAsync(Guid.NewGuid(), Guid.NewGuid());
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(ErrorType.NotFound, result.Error!.Type);
+        await _repository.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RemoveFromLibraryAsync_WhenGameOwned_MarksItemRemovedAndSaves()
+    {
+        var userId = Guid.NewGuid();
+        var gameId = Guid.NewGuid();
+        var order = new Order(userId, [(gameId, 29.99m)]);
+        order.MarkPaid();
+        var item = order.Items[0];
+        _repository.GetOwnedLibraryItemAsync(userId, gameId, Arg.Any<CancellationToken>()).Returns(item);
+
+        var result = await _sut.RemoveFromLibraryAsync(userId, gameId);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(item.RemovedFromLibraryAtUtc);
+        await _repository.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task GetAllOrdersAdminAsync_ReturnsOrdersAcrossUsers()
     {
         var orderA = new Order(Guid.NewGuid(), [(Guid.NewGuid(), 29.99m)]);

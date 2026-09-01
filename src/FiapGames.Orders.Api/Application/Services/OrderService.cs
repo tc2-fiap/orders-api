@@ -118,6 +118,20 @@ public sealed class OrderService : IOrderService
     public async Task<PagedResult<LibraryItemResponse>> GetLibraryAsync(Guid userId, PagedRequest request, CancellationToken cancellationToken = default) =>
         await _repository.GetLibraryItemsByUserIdAsync(userId, request, cancellationToken);
 
+    public async Task<Result> RemoveFromLibraryAsync(Guid userId, Guid gameId, CancellationToken cancellationToken = default)
+    {
+        var item = await _repository.GetOwnedLibraryItemAsync(userId, gameId, cancellationToken);
+        if (item is null || !item.RemoveFromLibrary())
+        {
+            _logger.LogWarning("Library removal rejected: user {UserId} does not own game {GameId}", userId, gameId);
+            return Result.Failure(Error.NotFound($"Game '{gameId}' was not found in your library."));
+        }
+
+        await _repository.SaveChangesAsync(cancellationToken);
+        _logger.LogInformation("Game {GameId} removed from library for user {UserId} (order {OrderId})", gameId, userId, item.OrderId);
+        return Result.Success();
+    }
+
     public async Task<PagedResult<OrderResponse>> GetAllOrdersAdminAsync(PagedRequest request, CancellationToken cancellationToken = default)
     {
         var paged = await _repository.GetPagedAsync(request, cancellationToken);

@@ -34,7 +34,7 @@ public sealed class OrderRepository : IOrderRepository
         // translate OrderByDescending over a property of an already
         // constructed LibraryItemResponse record.
         var query = _context.OrderItems
-            .Where(i => i.UserId == userId && i.Status == OrderStatus.Paid)
+            .Where(i => i.UserId == userId && i.Status == OrderStatus.Paid && i.RemovedFromLibraryAtUtc == null)
             .OrderByDescending(i => i.UpdatedAtUtc ?? i.CreatedAtUtc)
             .Select(i => new LibraryItemResponse(i.GameId, i.OrderId, i.UpdatedAtUtc ?? i.CreatedAtUtc));
 
@@ -43,6 +43,11 @@ public sealed class OrderRepository : IOrderRepository
 
         return new PagedResult<LibraryItemResponse>(items, totalCount, request.Page ?? 1, request.PageSize ?? 10);
     }
+
+    public async Task<OrderItem?> GetOwnedLibraryItemAsync(Guid userId, Guid gameId, CancellationToken cancellationToken = default) =>
+        await _context.OrderItems.FirstOrDefaultAsync(
+            i => i.UserId == userId && i.GameId == gameId && i.Status == OrderStatus.Paid && i.RemovedFromLibraryAtUtc == null,
+            cancellationToken);
 
     // A fast, friendly pre-flight check — the actual, race-proof
     // enforcement is the partial unique index on order_items(user_id,
@@ -54,7 +59,7 @@ public sealed class OrderRepository : IOrderRepository
         var requestedIds = gameIds.ToList();
 
         return await _context.OrderItems
-            .Where(i => i.UserId == userId && requestedIds.Contains(i.GameId) && i.Status != OrderStatus.Failed)
+            .Where(i => i.UserId == userId && requestedIds.Contains(i.GameId) && i.Status != OrderStatus.Failed && i.RemovedFromLibraryAtUtc == null)
             .Select(i => i.GameId)
             .Distinct()
             .ToListAsync(cancellationToken);
