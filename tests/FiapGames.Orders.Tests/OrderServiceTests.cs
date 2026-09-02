@@ -165,6 +165,25 @@ public class OrderServiceTests
     }
 
     [Fact]
+    public async Task GetMyOrdersAsync_ForwardsCallerIdAsTheOnlyUserFilter()
+    {
+        var userId = Guid.NewGuid();
+        var order = new Order(userId, [(Guid.NewGuid(), 29.99m)]);
+        _repository.GetOrdersPagedAdminAsync(Arg.Any<PagedRequest>(), Arg.Any<OrderStatus?>(), Arg.Any<DateTime?>(), Arg.Any<DateTime?>(), Arg.Any<string?>(), Arg.Any<List<Guid>?>(), Arg.Any<List<Guid>?>(), Arg.Any<decimal?>(), Arg.Any<decimal?>(), Arg.Any<CancellationToken>())
+            .Returns(new PagedResult<Order>([order], 1, 1, 10));
+
+        var result = await _sut.GetMyOrdersAsync(userId, new PagedRequest());
+
+        Assert.Single(result.Items);
+        Assert.Equal(userId, result.Items.Single().UserId);
+        await _repository.Received(1).GetOrdersPagedAdminAsync(
+            Arg.Any<PagedRequest>(), null, null, null, null,
+            Arg.Is<List<Guid>>(ids => ids.Count == 1 && ids[0] == userId),
+            Arg.Is<List<Guid>>(ids => ids == null),
+            null, null, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task GetAllOrdersAdminAsync_ReturnsOrdersAcrossUsers()
     {
         var orderA = new Order(Guid.NewGuid(), [(Guid.NewGuid(), 29.99m)]);

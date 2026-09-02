@@ -14,6 +14,8 @@ public interface IOrderService
 
     Task<Result> RemoveFromLibraryAsync(Guid userId, Guid gameId, CancellationToken cancellationToken = default);
 
+    Task<PagedResult<OrderResponse>> GetMyOrdersAsync(Guid userId, PagedRequest request, CancellationToken cancellationToken = default);
+
     Task<PagedResult<OrderResponse>> GetAllOrdersAdminAsync(PagedRequest request, string? status, DateTime? from, DateTime? to, string? orderId, string? userIds, string? gameIds, decimal? minPrice, decimal? maxPrice, CancellationToken cancellationToken = default);
 
     Task<Result<IReadOnlyList<OrderEventResponse>>> GetOrderEventsAdminAsync(Guid orderId, CancellationToken cancellationToken = default);

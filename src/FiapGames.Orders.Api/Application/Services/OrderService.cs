@@ -132,6 +132,17 @@ public sealed class OrderService : IOrderService
         return Result.Success();
     }
 
+    // Reuses the admin paged query with userIds pinned to the caller — "my
+    // orders" is exactly "every order, filtered to one user", the same
+    // filter the admin user-name search already resolves to (notes.md 60).
+    // No new repository method or EF query needed.
+    public async Task<PagedResult<OrderResponse>> GetMyOrdersAsync(Guid userId, PagedRequest request, CancellationToken cancellationToken = default)
+    {
+        var paged = await _repository.GetOrdersPagedAdminAsync(request, status: null, from: null, to: null, orderId: null, userIds: [userId], gameIds: null, minPrice: null, maxPrice: null, cancellationToken);
+        var items = paged.Items.Select(OrderResponse.FromDomain).ToList();
+        return new PagedResult<OrderResponse>(items, paged.TotalCount, paged.Page, paged.PageSize);
+    }
+
     public async Task<PagedResult<OrderResponse>> GetAllOrdersAdminAsync(PagedRequest request, string? status, DateTime? from, DateTime? to, string? orderId, string? userIds, string? gameIds, decimal? minPrice, decimal? maxPrice, CancellationToken cancellationToken = default)
     {
         OrderStatus? parsedStatus = Enum.TryParse<OrderStatus>(status, out var s) ? s : null;

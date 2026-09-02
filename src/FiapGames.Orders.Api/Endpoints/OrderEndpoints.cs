@@ -34,6 +34,17 @@ public static class OrderEndpoints
             return result.ToHttpResult(order => Results.Created($"/api/orders/{order.Id}", order));
         });
 
+        group.MapGet("/mine", async (
+            [AsParameters] PagedRequest request,
+            IOrderService service,
+            HttpContext httpContext,
+            CancellationToken cancellationToken) =>
+        {
+            var userId = GetUserId(httpContext.User);
+            var result = await service.GetMyOrdersAsync(userId, request, cancellationToken);
+            return Results.Ok(result);
+        });
+
         group.MapGet("/admin", async (
             [AsParameters] PagedRequest request,
             string? status,
