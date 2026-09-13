@@ -16,7 +16,7 @@ public sealed class CatalogApiClient : ICatalogClient
 
     public async Task<CatalogGame?> GetGameAsync(Guid gameId, string bearerToken, CancellationToken cancellationToken = default)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/games/{gameId}");
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/catalog/{gameId}");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
 
         using var response = await _httpClient.SendAsync(request, cancellationToken);

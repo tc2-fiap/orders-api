@@ -12,7 +12,7 @@ namespace FiapGames.Orders.Api.Endpoints;
 
 public static class OrderEndpoints
 {
-    public static IEndpointRouteBuilder MapOrderEndpoints(this IEndpointRouteBuilder endpoints)
+    public static IEndpointRouteBuilder MapOrderEndpoints(this IEndpointRouteBuilder endpoints, Func<IResult> getVersion)
     {
         var group = endpoints.MapGroup("/api/orders").WithTags("Orders").RequireAuthorization();
 
@@ -96,6 +96,11 @@ public static class OrderEndpoints
             var result = await service.GetAllOrderEventsAdminAsync(request, eventType, from, to, cancellationToken);
             return Results.Ok(result);
         }).RequireAuthorization(p => p.RequireRole("Admin"));
+
+        // Admin-dashboard-facing twin of the bare /version (see Program.cs):
+        // same handler, reached via the Ingress like any other route in
+        // this group instead of only via kubectl port-forward, gated to Admin.
+        group.MapGet("/version", getVersion).RequireAuthorization(p => p.RequireRole("Admin"));
 
         endpoints.MapGet("/api/library", async (
             [AsParameters] PagedRequest request,
