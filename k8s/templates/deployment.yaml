@@ -15,11 +15,16 @@ spec:
       labels:
         app: orders-api
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
       initContainers:
         # See users-api's deployment.yaml for why this guards against a
         # transient crash on a genuinely cold cluster bring-up.
         - name: wait-for-postgres
           image: postgres:16-alpine
+          securityContext:
+            runAsUser: 70
           command:
             - sh
             - -c
@@ -37,6 +42,8 @@ spec:
                   key: POSTGRES_PORT
       containers:
         - name: orders-api
+          securityContext:
+            allowPrivilegeEscalation: false
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:

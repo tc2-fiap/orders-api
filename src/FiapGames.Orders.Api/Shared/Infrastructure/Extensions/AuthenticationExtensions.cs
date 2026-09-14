@@ -18,6 +18,7 @@ public static class AuthenticationExtensions
         services.Configure<JwtSettings>(configuration.GetSection(JwtSettings.SectionName));
         services.AddSingleton<ITokenService, JwtTokenService>();
         services.AddSingleton<IPasswordHasher, BCryptPasswordHasher>();
+        services.AddSingleton<ITokenRevocationStore, InMemoryTokenRevocationStore>();
 
         services.AddAuthentication(options =>
         {
@@ -35,6 +36,26 @@ public static class AuthenticationExtensions
                 ValidAudience = jwtSettings.Audience,
                 IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Secret)),
                 ClockSkew = TimeSpan.FromSeconds(30)
+            };
+
+            // Layered on top of the stateless signature/expiry check above —
+            // a token that's otherwise valid can still be rejected if its
+            // jti was revoked via /logout. See notes.md for why this is an
+            // in-memory, per-pod store rather than a persisted one.
+            options.Events = new JwtBearerEvents
+            {
+                OnTokenValidated = context =>
+                {
+                    var jti = context.Principal?.FindFirst("jti")?.Value;
+                    if (jti is not null)
+                    {
+                        var store = context.HttpContext.RequestServices.GetRequiredService<ITokenRevocationStore>();
+                        if (store.IsRevoked(jti))
+                            context.Fail("Token has been revoked.");
+                    }
+
+                    return Task.CompletedTask;
+                }
             };
         });
 

@@ -63,6 +63,7 @@ builder.Services.AddMassTransit(x =>
     });
 
     x.AddConsumer<PaymentProcessedConsumer>();
+    x.AddConsumer<TokenRevokedConsumer>();
 
     x.UsingRabbitMq((context, cfg) =>
     {
@@ -84,6 +85,11 @@ builder.Services.AddMassTransit(x =>
         cfg.ReceiveEndpoint("orders-api-payment-processed", e =>
         {
             e.ConfigureConsumer<PaymentProcessedConsumer>(context);
+        });
+
+        cfg.ReceiveEndpoint("orders-api-token-revoked", e =>
+        {
+            e.ConfigureConsumer<TokenRevokedConsumer>(context);
         });
     });
 });
