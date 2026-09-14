@@ -35,8 +35,8 @@ services:
 
   orders-api:
     build:
-      context: ./src/FiapGames.Orders.Api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: src/FiapGames.Orders.Api/Dockerfile
     restart: unless-stopped
     ports:
       - "8084:8080"

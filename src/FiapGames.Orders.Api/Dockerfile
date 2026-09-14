@@ -1,29 +1,29 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
-COPY FiapGames.Orders.Api.csproj .
-RUN dotnet restore FiapGames.Orders.Api.csproj
+# git is needed only to bake this image's own commit SHA into
+# build-info.json below — see notes.md for why that replaced the old
+# --build-arg BUILD_SHA/BUILD_TIME dance (it was easy to forget to pass, or
+# to pass computed against a not-yet-committed HEAD).
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 
+COPY src/FiapGames.Orders.Api/FiapGames.Orders.Api.csproj src/FiapGames.Orders.Api/
+RUN dotnet restore src/FiapGames.Orders.Api/FiapGames.Orders.Api.csproj
+
+# The build context is this repo's own root now (not just the service
+# folder) specifically so .git is present here for the next step.
 COPY . .
+RUN echo "{\"sha\":\"$(git rev-parse HEAD)\",\"buildTime\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > /build-info.json
 
-RUN dotnet publish FiapGames.Orders.Api.csproj -c Release -o /app/publish --no-restore
+RUN dotnet publish src/FiapGames.Orders.Api/FiapGames.Orders.Api.csproj -c Release -o /app/publish --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
-# Not baked in automatically — the build context here is just this service's
-# own project folder, with no .git to read from. Pass both at build time:
-#   docker build --build-arg BUILD_SHA=$(git rev-parse HEAD) \
-#                --build-arg BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ) ...
-# Left as "unknown" otherwise, e.g. a plain `docker build` with neither arg.
-ARG BUILD_SHA=unknown
-ARG BUILD_TIME=unknown
-ENV BUILD_SHA=$BUILD_SHA
-ENV BUILD_TIME=$BUILD_TIME
-
 USER app
 
 COPY --from=build /app/publish .
+COPY --from=build /build-info.json .
 
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080

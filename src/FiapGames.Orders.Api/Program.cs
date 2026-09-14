@@ -143,11 +143,11 @@ app.UseAuthorization();
 // Ingress like any other route — the admin dashboard's source for this).
 // Same handler, not duplicated logic, registered at two paths because
 // nothing else makes the unauthenticated one reachable from a browser.
-static IResult GetVersion() => Results.Ok(new
+static IResult GetVersion()
 {
-    sha = Environment.GetEnvironmentVariable("BUILD_SHA") ?? "unknown",
-    buildTime = Environment.GetEnvironmentVariable("BUILD_TIME") ?? "unknown"
-});
+    var (sha, buildTime) = FiapGames.Shared.Infrastructure.BuildInfo.Read();
+    return Results.Ok(new { sha, buildTime });
+}
 
 app.MapHealthChecks("/health");
 app.MapGet("/version", GetVersion);

@@ -1,0 +1,8 @@
+**/bin/
+**/obj/
+tests/
+k8s/
+.env
+.env.example
+.github/
+*.md
