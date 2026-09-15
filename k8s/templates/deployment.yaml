@@ -18,6 +18,7 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 1654
+      automountServiceAccountToken: false
       initContainers:
         # See users-api's deployment.yaml for why this guards against a
         # transient crash on a genuinely cold cluster bring-up.
@@ -25,6 +26,16 @@ spec:
           image: postgres:16-alpine
           securityContext:
             runAsUser: 70
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
           command:
             - sh
             - -c
@@ -44,6 +55,15 @@ spec:
         - name: orders-api
           securityContext:
             allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 384Mi
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
