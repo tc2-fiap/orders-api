@@ -1,9 +1,9 @@
 replicaCount: 1
 
 image:
-  repository: orders-api
+  repository: ghcr.io/tc2-fiap/orders-api
   tag: latest
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
 
 service:
   port: 8080
